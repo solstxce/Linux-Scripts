@@ -1,0 +1,71 @@
+#!/bin/bash
+
+# Check if running with root permissions
+if [ "$EUID" -ne 0 ]; then
+    echo "This script requires root permissions. Please run it with sudo or doas."
+    echo "Example: sudo $0 [options]"
+    echo "         doas $0 [options]"
+    exit 1
+fi
+
+# Define the maximum and minimum brightness values
+max_brightness=400
+min_brightness=0
+
+# Get the current brightness value
+current_brightness=$(cat /sys/class/backlight/intel_backlight/brightness)
+
+# Function to print usage
+usage() {
+    echo "Usage: $0 [-s|--set VALUE] [-i|--inc VALUE] [-d|--dec VALUE] [-h|--help] [-c|--current]"
+    echo "  -s, --set VALUE    Set the brightness value (between $min_brightness and $max_brightness)"
+    echo "  -i, --inc VALUE    Increase the brightness by VALUE (between $min_brightness and $max_brightness)"
+    echo "  -d, --dec VALUE    Decrease the brightness by VALUE (between $min_brightness and $max_brightness)"
+    echo "  -h, --help         Display this help and exit"
+    echo "  -c, --current      Display the current brightness value and exit"
+}
+
+# Parse options
+if [ "$#" -eq 0 ]; then
+    usage
+    exit 0
+fi
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -s|--set)
+            new_brightness="$2"
+            shift 2
+            ;;
+        -i|--inc)
+            new_brightness=$((current_brightness + $2))
+            shift 2
+            ;;
+        -d|--dec)
+            new_brightness=$((current_brightness - $2))
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -c|--current)
+            echo "Current brightness value: $current_brightness"
+            exit 0
+            ;;
+        *)
+            usage
+            exit 1
+            ;;
+    esac
+done
+
+# Ensure the new brightness value is within the valid range
+new_brightness=$((new_brightness < min_brightness ? min_brightness : new_brightness))
+new_brightness=$((new_brightness > max_brightness ? max_brightness : new_brightness))
+
+# Write the new brightness value to the brightness file
+echo "$new_brightness" > /sys/class/backlight/intel_backlight/brightness
+
+# Print the new brightness value
+echo "New brightness value: $new_brightness"

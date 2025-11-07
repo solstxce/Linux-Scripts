@@ -1,0 +1,80 @@
+#!/bin/bash
+# 🧩 sanitize_env_preserve.sh
+# Smartly sanitize .env files by replacing secrets with meaningful placeholders.
+# Preserves comments, formatting, and inline notes.
+# Usage: ./sanitize_env_preserve.sh [.env] [.env.sample]
+
+INPUT_FILE=${1:-.env}
+OUTPUT_FILE=${2:-.env.sample}
+
+if [ ! -f "$INPUT_FILE" ]; then
+  echo "❌ Error: Input file '$INPUT_FILE' not found."
+  exit 1
+fi
+
+echo "🧹 Generating sanitized sample: $OUTPUT_FILE from $INPUT_FILE..."
+
+> "$OUTPUT_FILE"
+
+while IFS= read -r line; do
+  # Keep blank lines as-is
+  if [[ -z "$line" ]]; then
+    echo "" >> "$OUTPUT_FILE"
+    continue
+  fi
+
+  # Preserve full-line comments
+  if [[ "$line" =~ ^[[:space:]]*# ]]; then
+    echo "$line" >> "$OUTPUT_FILE"
+    continue
+  fi
+
+  # Detect key=value format (with or without quotes)
+  if [[ "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+    key="${BASH_REMATCH[1]}"
+    rest="${BASH_REMATCH[2]}"
+
+    # Extract inline comment if present (anything after '#')
+    comment=""
+    if [[ "$rest" == *"#"* ]]; then
+      comment="${rest#*#}"          # comment content
+      comment="#${rest#*=*#}"       # ensure starts with '#'
+      rest="${rest%%#*}"            # remove comment part
+    fi
+
+    # Trim surrounding quotes/spaces
+    value=$(echo "$rest" | sed -E 's/^[[:space:]]*["'\'']?//;s/["'\'']?[[:space:]]*$//')
+
+    # Decide placeholder intelligently
+    upper_key=$(echo "$key" | tr '[:lower:]' '[:upper:]')
+    case "$upper_key" in
+      *URL*|*URI*) sample_val="https://example.com" ;;
+      *HOST*|*SERVER*) sample_val="localhost" ;;
+      *PORT*) sample_val="8080" ;;
+      *USER*|*USERNAME*|*EMAIL*) sample_val="user@example.com" ;;
+      *PASS*|*SECRET*|*TOKEN*|*KEY*|*APIKEY*) sample_val="sample_secret_key_123" ;;
+      *DB*|*DATABASE*) sample_val="sample_database" ;;
+      *NAME*) sample_val="sample_name" ;;
+      *MODE*) sample_val="development" ;;
+      *PATH*) sample_val="/usr/local/app" ;;
+      *TIME*|*DATE*) sample_val="2025-01-01T00:00:00Z" ;;
+      *DEBUG*) sample_val="true" ;;
+      *ENV*) sample_val="production" ;;
+      *ID*) sample_val="12345" ;;
+      *) sample_val="example_value" ;;
+    esac
+
+    # Rebuild sanitized line (preserve inline comments)
+    if [[ -n "$comment" ]]; then
+      echo "$key=$sample_val $comment" >> "$OUTPUT_FILE"
+    else
+      echo "$key=$sample_val" >> "$OUTPUT_FILE"
+    fi
+
+  else
+    # Copy nonstandard lines (like export statements or malformed ones)
+    echo "$line" >> "$OUTPUT_FILE"
+  fi
+done < "$INPUT_FILE"
+
+echo "✅ Done! Saved to $OUTPUT_FILE"
